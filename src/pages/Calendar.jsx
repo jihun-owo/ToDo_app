@@ -1,4 +1,4 @@
-import React, { useContext } from 'react';
+import React, { useContext, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ThemeContext, AuthContext } from '../App';
 import { Menu, Home as HomeIcon, Moon, Sun, User, LogIn, LogOut, Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -11,6 +11,7 @@ const Calendar = () => {
 
   const currentYear = parseInt(year, 10) || new Date().getFullYear();
   const currentMonth = parseInt(month, 10) || new Date().getMonth() + 1;
+  const [selectedDate, setSelectedDate] = useState(null);
 
   const handleMyPageClick = () => {
     if (isLoggedIn) navigate('/mypage');
@@ -49,13 +50,6 @@ const Calendar = () => {
   for (let i = 1; i <= remainingSlots; i++) {
     days.push({ day: i, isCurrentMonth: false });
   }
-
-  // Use fixed 13th for the exact visual from the screenshot, or fallback to real today if it's the current month/year
-  const today = new Date();
-  const isToday = (d) => {
-    if (currentYear === 2026 && currentMonth === 5 && d === 13) return true;
-    return today.getFullYear() === currentYear && today.getMonth() + 1 === currentMonth && today.getDate() === d;
-  };
 
   return (
     <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', minHeight: '100vh', width: '100%', backgroundColor: 'var(--bg-color)' }}>
@@ -130,7 +124,7 @@ const Calendar = () => {
 
             {/* Days Grid */}
             {days.map((d, i) => {
-              const current = d.isCurrentMonth && isToday(d.day);
+              const current = d.isCurrentMonth && selectedDate === d.day;
               return (
                 <div key={i} style={{
                   display: 'flex',
@@ -147,6 +141,11 @@ const Calendar = () => {
                   borderRadius: '0.3rem',
                   cursor: d.isCurrentMonth ? 'pointer' : 'default',
                   transition: 'all 0.2s',
+                }}
+                onClick={() => {
+                  if (d.isCurrentMonth) {
+                    setSelectedDate(prev => prev === d.day ? null : d.day);
+                  }
                 }}
                 onMouseOver={(e) => {
                   if(d.isCurrentMonth && !current) {
@@ -165,6 +164,21 @@ const Calendar = () => {
             })}
           </div>
         </div>
+
+        {/* Temporary UI for Date Selection */}
+        {selectedDate && (
+          <div className="animate-fade-in" style={{
+            marginTop: '2rem', padding: '1.5rem', backgroundColor: '#2b2a38',
+            borderRadius: '0.75rem', width: '100%', maxWidth: '800px',
+            textAlign: 'center', color: '#fff', border: '1px solid #882BCF',
+            boxShadow: '0 4px 20px rgba(136, 43, 207, 0.15)'
+          }}>
+            <p style={{ fontSize: '1.1rem', lineHeight: '1.6' }}>
+              선택하신 <strong>{currentYear}년 {currentMonth}월 {selectedDate}일</strong>의 일과 추가 기능은<br/> 
+              추후 업데이트를 통해 제공될 예정입니다! 🚀
+            </p>
+          </div>
+        )}
 
       </div>
     </div>
