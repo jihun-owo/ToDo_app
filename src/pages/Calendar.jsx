@@ -1,7 +1,10 @@
-import React, { useContext, useState } from 'react';
+import React, { useContext, useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { ThemeContext, AuthContext, AppContext } from '../App';
 import { Menu, Home as HomeIcon, Moon, Sun, User, LogIn, LogOut, Calendar as CalendarIcon, ChevronLeft, ChevronRight, Edit2, ChevronDown, ChevronUp, RefreshCw, Plus, Trash2, X } from 'lucide-react';
+
+const LIMIT = 5;
+const COOLDOWN_MS = 60 * 60 * 1000; // 1시간
 
 const Calendar = () => {
   const { year, month } = useParams();
@@ -14,10 +17,16 @@ const Calendar = () => {
   const currentYear = parseInt(year, 10) || new Date().getFullYear();
   const currentMonth = parseInt(month, 10) || new Date().getMonth() + 1;
   const [selectedDate, setSelectedDate] = useState(null);
+  
+  const getCurrentTime = () => {
+    const now = new Date();
+    return `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+  };
+
   const [isAddingRoutine, setIsAddingRoutine] = useState(false);
   const [isAiSummaryOpen, setIsAiSummaryOpen] = useState(false);
   const [isEditingAiSummary, setIsEditingAiSummary] = useState(false);
-  const [routineForm, setRoutineForm] = useState({ time: '', content: '' });
+  const [routineForm, setRoutineForm] = useState({ time: getCurrentTime(), content: '' });
   const [dayData, setDayData] = useState(() => {
     try {
       const saved = localStorage.getItem('dayData');
@@ -38,6 +47,48 @@ const Calendar = () => {
       return updated;
     });
   };
+
+  const [aiUsage, setAiUsage] = useState(() => {
+    try {
+      const saved = localStorage.getItem('aiUsageData');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.count >= LIMIT && parsed.resetTime && Date.now() >= parsed.resetTime) {
+          return { count: 0, resetTime: null };
+        }
+        return parsed;
+      }
+    } catch(e) {}
+    return { count: 0, resetTime: null };
+  });
+
+  const [isLoadingAi, setIsLoadingAi] = useState(false);
+  const [remainingTime, setRemainingTime] = useState('');
+
+  useEffect(() => {
+    localStorage.setItem('aiUsageData', JSON.stringify(aiUsage));
+    
+    let interval = null;
+    if (aiUsage.count >= LIMIT && aiUsage.resetTime) {
+      const updateTimer = () => {
+        const now = Date.now();
+        const diff = aiUsage.resetTime - now;
+        if (diff <= 0) {
+          setAiUsage({ count: 0, resetTime: null });
+          setRemainingTime('');
+        } else {
+          const m = Math.floor(diff / 60000);
+          const s = Math.floor((diff % 60000) / 1000);
+          setRemainingTime(`${m}분 ${s}초 뒤 충전`);
+        }
+      };
+      updateTimer();
+      interval = setInterval(updateTimer, 1000);
+    } else {
+      setRemainingTime('');
+    }
+    return () => clearInterval(interval);
+  }, [aiUsage]);
 
   const handleMyPageClick = () => {
     if (isLoggedIn) navigate('/mypage');
@@ -63,7 +114,7 @@ const Calendar = () => {
     setIsAddingRoutine(false);
     setIsAiSummaryOpen(false);
     setIsEditingAiSummary(false);
-    setRoutineForm({ time: '', content: '' });
+    setRoutineForm({ time: getCurrentTime(), content: '' });
   };
 
   const handleAddRoutineSubmit = () => {
@@ -75,13 +126,44 @@ const Calendar = () => {
     }
   };
 
-  const handleGenerateAiSummary = () => {
+  const handleGenerateAiSummary = async () => {
+    if (aiUsage.count >= LIMIT) {
+      alert('일일 사용량을 모두 소진했습니다. 잠시 후 다시 시도해주세요.');
+      return;
+    }
+
     const routineTexts = currentDayData?.routines.map(r => r.content).join(", ");
-    const fakeSummary = routineTexts 
-      ? `AI가 일상에 핵심 요약을 해줍니다 (3줄 이상)\n\n오늘의 핵심 일정: ${routineTexts}\n잘 마무리하시길 바랍니다!`
-      : "일과를 먼저 추가해 주시면 요약해 드립니다.";
-    updateCurrentDayData({ aiSummary: fakeSummary });
+    if (!routineTexts) {
+      updateCurrentDayData({ aiSummary: "일과를 먼저 추가해 주시면 요약해 드립니다." });
+      setIsAiSummaryOpen(true);
+      return;
+    }
+
+    setIsLoadingAi(true);
     setIsAiSummaryOpen(true);
+    updateCurrentDayData({ aiSummary: "✨ AI가 일상을 요약하고 있습니다..." });
+
+    try {
+      if (!window.puter || !window.puter.ai) {
+        throw new Error('Puter AI가 로드되지 않았습니다.');
+      }
+      const prompt = `다음은 사용자의 오늘 하루 일과입니다. 이 일과들을 바탕으로 오늘 하루를 따뜻하고 긍정적인 어조로 3줄로 요약해 주세요. 일과: ${routineTexts}`;
+      const response = await window.puter.ai.chat(prompt);
+      
+      updateCurrentDayData({ aiSummary: response });
+      
+      const newCount = aiUsage.count + 1;
+      setAiUsage({
+        count: newCount,
+        resetTime: newCount >= LIMIT ? Date.now() + COOLDOWN_MS : null
+      });
+
+    } catch (error) {
+      console.error(error);
+      updateCurrentDayData({ aiSummary: "요약 중 오류가 발생했습니다. (Puter.js 연결을 확인하세요.)" });
+    } finally {
+      setIsLoadingAi(false);
+    }
   };
 
   const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
@@ -227,7 +309,7 @@ const Calendar = () => {
             backgroundColor: 'rgba(0, 0, 0, 0.7)', display: 'flex',
             justifyContent: 'center', alignItems: 'center', zIndex: 1000
           }}>
-            <div className="modal-content" style={{
+            <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{
               backgroundColor: '#1E1E24', width: '90%', maxWidth: '1000px',
               height: '85vh', borderRadius: '1rem', display: 'flex',
               flexDirection: 'column', overflow: 'hidden', color: '#fff',
@@ -252,7 +334,12 @@ const Calendar = () => {
                   <span style={{ fontSize: '1.1rem', fontWeight: '500' }}>{currentYear}년 {currentMonth}월 {selectedDate}일</span>
                 </div>
                 
-                <button onClick={() => setIsAddingRoutine(!isAddingRoutine)} style={{
+                <button onClick={() => {
+                  setIsAddingRoutine(!isAddingRoutine);
+                  if (!isAddingRoutine) {
+                    setRoutineForm({ time: getCurrentTime(), content: '' });
+                  }
+                }} style={{
                   backgroundColor: isAddingRoutine ? '#4b4b60' : '#A855F7', color: '#fff', border: 'none',
                   padding: '0.6rem 1.2rem', borderRadius: '2rem', cursor: 'pointer',
                   fontWeight: '600', fontSize: '0.9rem'
@@ -281,17 +368,49 @@ const Calendar = () => {
 
                   {!isAddingRoutine ? (
                     <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', backgroundColor: '#363644', padding: '1rem', borderRadius: '0.5rem' }}>
-                        <span style={{ opacity: 0.8 }}>연필을 눌러 날짜 색을 변경할 수 있습니다</span>
-                        <label style={{ cursor: 'pointer', display: 'flex', alignItems: 'center' }}>
-                          <Edit2 size={20} style={{ opacity: 0.8 }} />
-                          <input 
-                            type="color" 
-                            value={currentDayData.color} 
-                            onChange={(e) => updateCurrentDayData({ color: e.target.value })} 
-                            style={{ position: 'absolute', opacity: 0, width: 0, height: 0 }} 
-                          />
-                        </label>
+                      <div style={{ backgroundColor: '#363644', padding: '1.5rem', borderRadius: '0.5rem' }}>
+                        <div style={{ opacity: 0.8, marginBottom: '1rem', fontSize: '0.9rem' }}>날짜 테마 색상 선택</div>
+                        <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                          {[
+                            { hex: '#ffffff', name: '기본 (하양)' },
+                            { hex: '#ef4444', name: '빨강' },
+                            { hex: '#f97316', name: '주황' },
+                            { hex: '#f59e0b', name: '노랑' },
+                            { hex: '#84cc16', name: '연두' },
+                            { hex: '#22c55e', name: '초록' },
+                            { hex: '#06b6d4', name: '청록' },
+                            { hex: '#3b82f6', name: '파랑' },
+                            { hex: '#8b5cf6', name: '보라' },
+                            { hex: '#d946ef', name: '분홍' },
+                            { hex: '#f43f5e', name: '진분홍' }
+                          ].map(c => (
+                            <button 
+                              key={c.hex}
+                              onClick={() => updateCurrentDayData({ color: c.hex })}
+                              style={{
+                                width: '32px', height: '32px', borderRadius: '50%', backgroundColor: c.hex,
+                                border: currentDayData.color === c.hex ? '3px solid #fff' : '2px solid transparent',
+                                cursor: 'pointer', transition: 'transform 0.2s',
+                                transform: currentDayData.color === c.hex ? 'scale(1.1)' : 'scale(1)',
+                                boxShadow: currentDayData.color === c.hex ? '0 0 10px rgba(255,255,255,0.5)' : 'none'
+                              }}
+                              title={c.name}
+                            />
+                          ))}
+                          <label style={{
+                            width: '32px', height: '32px', borderRadius: '50%', 
+                            background: 'conic-gradient(from 0deg, #ef4444, #f97316, #f59e0b, #84cc16, #22c55e, #06b6d4, #3b82f6, #8b5cf6, #d946ef, #f43f5e, #ef4444)',
+                            border: '2px solid transparent', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            position: 'relative', overflow: 'hidden'
+                          }} title="직접 선택">
+                            <input 
+                              type="color" 
+                              value={currentDayData.color} 
+                              onChange={(e) => updateCurrentDayData({ color: e.target.value })} 
+                              style={{ position: 'absolute', width: '200%', height: '200%', opacity: 0, cursor: 'pointer', border: 'none', padding: 0 }} 
+                            />
+                          </label>
+                        </div>
                       </div>
                     </>
                   ) : (
@@ -319,7 +438,21 @@ const Calendar = () => {
                           />
                         </div>
                         <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '1rem', marginTop: '1rem' }}>
-                          <button onClick={handleGenerateAiSummary} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'transparent', border: '1px solid #A855F7', color: '#A855F7', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}>✨ AI로 일상 요약하기</button>
+                          <button 
+                            onClick={handleGenerateAiSummary} 
+                            disabled={isLoadingAi || aiUsage.count >= LIMIT}
+                            style={{ 
+                              display: 'flex', alignItems: 'center', gap: '0.5rem', 
+                              backgroundColor: 'transparent', 
+                              border: '1px solid',
+                              borderColor: (isLoadingAi || aiUsage.count >= LIMIT) ? '#666' : '#A855F7',
+                              color: (isLoadingAi || aiUsage.count >= LIMIT) ? '#666' : '#A855F7',
+                              padding: '0.5rem 1rem', borderRadius: '0.5rem', 
+                              cursor: (isLoadingAi || aiUsage.count >= LIMIT) ? 'not-allowed' : 'pointer'
+                            }}>
+                            {isLoadingAi ? '요약 중...' : `✨ AI로 일상 요약하기 (${LIMIT - aiUsage.count}/${LIMIT})`}
+                            {remainingTime && <span style={{ fontSize: '0.8rem', opacity: 0.8, marginLeft: '0.5rem' }}>({remainingTime})</span>}
+                          </button>
                           <button onClick={handleAddRoutineSubmit} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'transparent', border: '1px solid #4ade80', color: '#4ade80', padding: '0.5rem 1rem', borderRadius: '0.5rem', cursor: 'pointer' }}><Plus size={18} /> 기록 추가</button>
                         </div>
                       </div>
@@ -336,7 +469,10 @@ const Calendar = () => {
                         <div onClick={(e) => { e.stopPropagation(); setIsEditingAiSummary(!isEditingAiSummary); }} style={{ cursor: 'pointer', color: isEditingAiSummary ? '#A855F7' : 'inherit' }}>
                           <Edit2 size={20} />
                         </div>
-                        <div onClick={(e) => { e.stopPropagation(); handleGenerateAiSummary(); }} style={{ cursor: 'pointer' }}>
+                        <div 
+                          onClick={(e) => { e.stopPropagation(); if (!isLoadingAi && aiUsage.count < LIMIT) handleGenerateAiSummary(); }} 
+                          style={{ cursor: (isLoadingAi || aiUsage.count >= LIMIT) ? 'not-allowed' : 'pointer', opacity: (isLoadingAi || aiUsage.count >= LIMIT) ? 0.5 : 1 }}
+                        >
                           <RefreshCw size={20} />
                         </div>
                         {isAiSummaryOpen ? <ChevronUp size={24} /> : <ChevronDown size={24} />}
@@ -392,9 +528,9 @@ const Calendar = () => {
 
       {/* Sidebar Overlay */}
       {isSidebarOpen && (
-        <div className="sidebar-overlay animate-fade-in" onClick={() => setIsSidebarOpen(false)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.5)', zIndex: 2000 }}>
-          <div className="sidebar" onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: '250px', backgroundColor: 'var(--bg-color)', borderRight: '1px solid var(--border-color)', animation: 'slideRight 0.3s' }}>
-            <button className="icon-btn close-sidebar" onClick={() => setIsSidebarOpen(false)} style={{ position: 'absolute', top: '1rem', right: '1rem', background: 'none', border: 'none', color: 'var(--text-color)', cursor: 'pointer' }}>
+        <div className="sidebar-overlay" onClick={() => setIsSidebarOpen(false)}>
+          <div className="sidebar" onClick={(e) => e.stopPropagation()}>
+            <button className="icon-btn close-sidebar" onClick={() => setIsSidebarOpen(false)}>
               <X size={28} />
             </button>
             <div style={{ padding: '1rem' }}>

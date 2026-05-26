@@ -1,12 +1,14 @@
 import React, { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthContext } from '../App';
+import { AuthContext, AppContext } from '../App';
 import { ArrowLeft, User, LogOut, Key, Trash2 } from 'lucide-react';
 
 const MyPage = () => {
   const navigate = useNavigate();
   const { isLoggedIn, setIsLoggedIn } = useContext(AuthContext);
+  const { setUserName } = useContext(AppContext);
   const [newPassword, setNewPassword] = useState('');
+  const [newUsername, setNewUsername] = useState('');
 
   // Fallback protection: although routing handles this usually, it's good to have it here too.
   if (!isLoggedIn) {
@@ -25,6 +27,15 @@ const MyPage = () => {
     localStorage.setItem('userPassword', newPassword);
     alert('비밀번호가 성공적으로 변경되었습니다.');
     setNewPassword('');
+  };
+
+  const handleChangeUsername = (e) => {
+    e.preventDefault();
+    if (newUsername.trim() === '') return;
+    localStorage.setItem('userId', newUsername);
+    setUserName(newUsername);
+    alert('사용자 이름(아이디)이 성공적으로 변경되었습니다. 다음 로그인 시 새 아이디를 사용해주세요.');
+    setNewUsername('');
   };
 
   const handleDeleteAccount = () => {
@@ -57,6 +68,24 @@ const MyPage = () => {
         </div>
 
         <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem' }}>
+          <section>
+            <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '1.25rem' }}>
+              <User size={20} /> 사용자 이름 변경
+            </h2>
+            <form onSubmit={handleChangeUsername} style={{ display: 'flex', gap: '1rem' }}>
+              <input 
+                type="text" 
+                placeholder="새로운 사용자 이름 (아이디)" 
+                value={newUsername}
+                onChange={(e) => setNewUsername(e.target.value)}
+                className="input-field"
+                style={{ marginBottom: 0, flex: 1, borderColor: 'var(--border-color)', color: 'var(--card-text)' }}
+                required
+              />
+              <button type="submit" className="primary-btn" style={{ width: 'auto', padding: '0 1.5rem' }}>변경</button>
+            </form>
+          </section>
+
           <section>
             <h2 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '1rem', fontSize: '1.25rem' }}>
               <Key size={20} /> 비밀번호 변경
