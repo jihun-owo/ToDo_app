@@ -31,7 +31,7 @@ const Calendar = () => {
   // dayData is now managed by AppContext
 
   const dateKey = selectedDate ? `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(selectedDate).padStart(2, '0')}` : null;
-  const currentDayData = dateKey ? (dayData[dateKey] || { title: '', color: '#8b5cf6', routines: [], aiSummary: '' }) : null;
+  const currentDayData = dateKey ? (dayData[dateKey] || { title: '', color: '#ffffff', routines: [], aiSummary: '' }) : null;
 
   const checkAndCleanEmptyMonth = (data) => {
     const monthPrefix = `${currentYear}-${String(currentMonth).padStart(2, '0')}-`;
@@ -39,7 +39,7 @@ const Calendar = () => {
     for (const key in data) {
       if (key.startsWith(monthPrefix)) {
         const d = data[key];
-        if ((d.routines && d.routines.length > 0) || d.title || (d.color && d.color !== '#8b5cf6') || d.aiSummary) {
+        if ((d.routines && d.routines.length > 0) || d.title || (d.color && d.color !== '#ffffff') || d.aiSummary) {
           hasData = true;
           break;
         }
@@ -54,7 +54,7 @@ const Calendar = () => {
     setDayData(prev => {
       const updated = {
         ...prev,
-        [dateKey]: { ...(prev[dateKey] || { title: '', color: '#8b5cf6', routines: [], aiSummary: '' }), ...updates }
+        [dateKey]: { ...(prev[dateKey] || { title: '', color: '#ffffff', routines: [], aiSummary: '' }), ...updates }
       };
       saveDataToServer(null, updated, null);
       checkAndCleanEmptyMonth(updated);
@@ -157,7 +157,12 @@ const Calendar = () => {
     try {
       // Mock AI summarize instead of fetch
       await new Promise(resolve => setTimeout(resolve, 1500));
-      const data = { summary: `✨ (가상 요약) 오늘 기록하신 일과를 바탕으로 분석했습니다:\n\n- 총 ${currentDayData?.routines.length}개의 일과를 소화하셨습니다.\n- 바쁜 하루를 알차게 보내셨네요! 다음에도 잘 기록해주세요.` };
+      const sortedRoutines = [...(currentDayData?.routines || [])].sort((a, b) => a.time.localeCompare(b.time));
+      const summaryText = sortedRoutines.map(r => {
+        const [hour, min] = r.time.split(':');
+        return `${parseInt(hour, 10)}시 ${parseInt(min, 10)}분에는 ${r.content}`;
+      }).join(' 하고, ') + (sortedRoutines.length > 0 ? ' 하셨습니다.' : '일과가 없습니다.');
+      const data = { summary: `✨ (가상 요약) 오늘 기록하신 일과를 바탕으로 분석했습니다:\n\n- ${summaryText}\n- 총 ${currentDayData?.routines.length}개의 일과를 소화하셨습니다.\n- 바쁜 하루를 알차게 보내셨네요! 다음에도 잘 기록해주세요.` };
       
       updateCurrentDayData({ aiSummary: data.summary });
       
@@ -264,7 +269,7 @@ const Calendar = () => {
             {days.map((d, i) => {
               const current = d.isCurrentMonth && selectedDate === d.day;
               const dKey = d.isCurrentMonth ? `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d.day).padStart(2, '0')}` : null;
-              const dColor = dKey && dayData[dKey]?.color ? dayData[dKey].color : (current ? '#882BCF' : '#8b5cf6');
+              const dColor = dKey && dayData[dKey]?.color && dayData[dKey].color !== '#ffffff' ? dayData[dKey].color : (current ? '#882BCF' : '#fff');
               
               return (
                 <div key={i} title={dKey && dayData[dKey]?.title ? dayData[dKey].title : ""} className="day-cell" style={{
@@ -326,7 +331,7 @@ const Calendar = () => {
                 <div className="modal-actions">
                   <button onClick={() => {
                     if (window.confirm('이 날의 모든 일과 및 데이터를 삭제하시겠습니까?')) {
-                      updateCurrentDayData({ routines: [], title: '', color: '#8b5cf6', aiSummary: '' });
+                      updateCurrentDayData({ routines: [], title: '', color: '#ffffff', aiSummary: '' });
                       handleCloseModal();
                     }
                   }} style={{
@@ -359,12 +364,19 @@ const Calendar = () => {
                 }}>
                   {/* Title Input */}
                   <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', backgroundColor: '#363644', padding: '1rem', borderRadius: '0.5rem' }}>
-                    <CalendarIcon size={24} style={{ opacity: 0.7, color: currentDayData.color !== '#8b5cf6' ? currentDayData.color : 'inherit' }} />
+                    <CalendarIcon size={24} style={{ opacity: 0.7, color: currentDayData.color !== '#ffffff' ? currentDayData.color : 'inherit' }} />
                     <input 
                       type="text" 
                       placeholder="제목을 적어주세요." 
                       value={currentDayData.title}
-                      onChange={(e) => updateCurrentDayData({ title: e.target.value })}
+                      onChange={(e) => {
+                        const newTitle = e.target.value;
+                        const updates = { title: newTitle };
+                        if (newTitle.length > 0 && currentDayData.color === '#ffffff') {
+                          updates.color = '#8b5cf6';
+                        }
+                        updateCurrentDayData(updates);
+                      }}
                       style={{ background: 'none', border: 'none', color: '#fff', fontSize: '1.1rem', flex: 1, outline: 'none' }}
                     />
                   </div>
@@ -375,8 +387,7 @@ const Calendar = () => {
                         <div style={{ opacity: 0.8, marginBottom: '1rem', fontSize: '0.9rem' }}>날짜 테마 색상 선택</div>
                         <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
                           {[
-                            { hex: '#8b5cf6', name: '기본 (보라)' },
-                            { hex: '#ffffff', name: '하양' },
+                            { hex: '#ffffff', name: '기본 (하양)' },
                             { hex: '#ef4444', name: '빨강' },
                             { hex: '#f97316', name: '주황' },
                             { hex: '#f59e0b', name: '노랑' },
@@ -384,6 +395,7 @@ const Calendar = () => {
                             { hex: '#22c55e', name: '초록' },
                             { hex: '#06b6d4', name: '청록' },
                             { hex: '#3b82f6', name: '파랑' },
+                            { hex: '#8b5cf6', name: '보라' },
                             { hex: '#d946ef', name: '분홍' },
                             { hex: '#f43f5e', name: '진분홍' }
                           ].map(c => (
