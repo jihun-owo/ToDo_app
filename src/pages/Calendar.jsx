@@ -158,11 +158,37 @@ const Calendar = () => {
       // Mock AI summarize instead of fetch
       await new Promise(resolve => setTimeout(resolve, 1500));
       const sortedRoutines = [...(currentDayData?.routines || [])].sort((a, b) => a.time.localeCompare(b.time));
-      const summaryText = sortedRoutines.map(r => {
-        const [hour, min] = r.time.split(':');
-        return `${parseInt(hour, 10)}시 ${parseInt(min, 10)}분에는 ${r.content}`;
-      }).join(' 하고, ') + (sortedRoutines.length > 0 ? ' 하셨습니다.' : '일과가 없습니다.');
-      const data = { summary: `✨ (가상 요약) 오늘 기록하신 일과를 바탕으로 분석했습니다:\n\n- ${summaryText}\n- 총 ${currentDayData?.routines.length}개의 일과를 소화하셨습니다.\n- 바쁜 하루를 알차게 보내셨네요! 다음에도 잘 기록해주세요.` };
+      const count = sortedRoutines.length;
+
+      // 시간대별 그룹핑 (오전/오후/저녁)
+      const morning = sortedRoutines.filter(r => { const h = parseInt(r.time.split(':')[0], 10); return h < 12; });
+      const afternoon = sortedRoutines.filter(r => { const h = parseInt(r.time.split(':')[0], 10); return h >= 12 && h < 18; });
+      const evening = sortedRoutines.filter(r => { const h = parseInt(r.time.split(':')[0], 10); return h >= 18; });
+
+      const summarizeGroup = (items) => items.map(r => r.content).join(', ');
+
+      let parts = [];
+      if (morning.length > 0) parts.push(`🌅 오전에는 ${summarizeGroup(morning)} 등을 하셨어요.`);
+      if (afternoon.length > 0) parts.push(`☀️ 오후에는 ${summarizeGroup(afternoon)} 등을 하며 보내셨네요.`);
+      if (evening.length > 0) parts.push(`🌙 저녁에는 ${summarizeGroup(evening)} 등으로 하루를 마무리하셨어요.`);
+
+      const greetings = [
+        '오늘도 정말 알차게 보내셨네요! 😊',
+        '바쁜 하루 속에서도 멋지게 해내셨어요! 💪',
+        '하루하루 성실하게 보내시는 모습이 멋져요! ✨',
+        '오늘 하루도 수고 많으셨어요! 내일도 파이팅! 🎉'
+      ];
+      const greeting = greetings[Math.floor(Math.random() * greetings.length)];
+
+      const summaryLines = [
+        `✨ 오늘 하루 동안 총 ${count}가지 일과를 기록해 주셨어요!`,
+        '',
+        ...parts,
+        '',
+        greeting
+      ];
+
+      const data = { summary: summaryLines.join('\n') };
       
       updateCurrentDayData({ aiSummary: data.summary });
       
